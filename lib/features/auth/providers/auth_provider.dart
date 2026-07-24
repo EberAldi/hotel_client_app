@@ -21,16 +21,19 @@ class AuthNotifier extends AsyncNotifier<bool> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final data = await _api.login(email, password);
-      await _authService.saveTokens(data['accessToken'], data['refreshToken']);
+      await _authService.saveTokens(data['access'], data['refresh']);
       return true;
     });
   }
 
+  /// El endpoint de registro solo crea el usuario, no devuelve tokens -- por
+  /// eso se hace login inmediatamente después con las mismas credenciales.
   Future<void> register(String email, String password) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final data = await _api.register({'email': email, 'password': password});
-      await _authService.saveTokens(data['accessToken'], data['refreshToken']);
+      await _api.register(email, password);
+      final data = await _api.login(email, password);
+      await _authService.saveTokens(data['access'], data['refresh']);
       return true;
     });
   }
