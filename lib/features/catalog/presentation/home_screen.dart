@@ -5,13 +5,21 @@ import 'package:go_router/go_router.dart';
 import 'package:hotel_client_app/features/assistant/presentation/chat_screen.dart';
 import 'package:hotel_client_app/features/assistant/presentation/weather_recomendation.dart';
 import '../../../core/config/app_theme.dart';
+import '../../reviews/providers/review_providers.dart';
+import '../data/catalog_models.dart';
 import '../data/mock_data.dart';
+import '../providers/catalog_providers.dart';
+import 'room_image.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final habitaciones = ref.watch(habitacionesProvider);
+    final imagenes = ref.watch(imagenesPorHabitacionProvider).value ?? {};
+    final resenas = ref.watch(resenasHabitacionesProvider).value ?? {};
+
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
   onPressed: () => Navigator.of(context).push(
@@ -70,11 +78,38 @@ class HomeScreen extends ConsumerWidget {
           SliverToBoxAdapter(
             child: SizedBox(
               height: 260,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: mockRooms.length,
-                itemBuilder: (context, i) => _RoomCard(room: mockRooms[i]),
+              child: habitaciones.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, _) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'No pudimos cargar las habitaciones. Desliza para reintentar.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                data: (rooms) => ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: rooms.length,
+                  itemBuilder: (context, i) {
+                    final room = rooms[i];
+                    final imagenPrincipal = imagenes[room.id]?.firstWhere(
+                      (img) => img.esPrincipal,
+                      orElse: () => imagenes[room.id]!.first,
+                    );
+                    final resenasHabitacion = resenas[room.id] ?? const [];
+                    final avgRating = resenasHabitacion.isEmpty
+                        ? null
+                        : resenasHabitacion.map((r) => r.calificacion).reduce((a, b) => a + b) /
+                            resenasHabitacion.length;
+                    return _RoomCard(
+                      room: room,
+                      imageUrl: imagenPrincipal?.url,
+                      avgRating: avgRating,
+                      reviewCount: resenasHabitacion.length,
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -105,8 +140,12 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _RoomCard extends StatelessWidget {
-  final Room room;
-  const _RoomCard({required this.room});
+  final Habitacion room;
+  final String? imageUrl;
+  final double? avgRating;
+  final int reviewCount;
+
+  const _RoomCard({required this.room, required this.imageUrl, required this.avgRating, required this.reviewCount});
 
   @override
   Widget build(BuildContext context) {
@@ -123,26 +162,33 @@ class _RoomCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
+            RoomImage(
+              imageUrl: imageUrl,
+              tipoNombre: room.tipoNombre,
+              height: 130,
+              width: double.infinity,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-              child: CachedNetworkImage(imageUrl: room.imageUrl, height: 130, width: double.infinity, fit: BoxFit.cover),
             ),
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(room.name, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 16), maxLines: 1),
+                  Text('${room.tipoNombre} · ${room.numero}',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 16), maxLines: 1),
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       const Icon(Icons.star_rounded, size: 16, color: AppColors.cempasuchil),
                       const SizedBox(width: 4),
-                      Text('${room.avgRating} (${room.reviewCount})', style: Theme.of(context).textTheme.bodyMedium),
+                      Text(
+                        avgRating == null ? 'Sin reseñas' : '${avgRating!.toStringAsFixed(1)} ($reviewCount)',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text('\$${room.pricePerNight.toStringAsFixed(0)} / noche',
+                  Text('\$${room.precioBase.toStringAsFixed(0)} / noche',
                       style: const TextStyle(color: AppColors.terracotta, fontWeight: FontWeight.w800)),
                 ],
               ),
