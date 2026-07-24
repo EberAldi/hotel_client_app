@@ -16,9 +16,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _scrollController = ScrollController();
 
   static const _suggestions = [
-    '¿Qué hacer hoy según el clima?',
-    '¿Dónde como cerca del hotel?',
     '¿A qué hora es el check-in?',
+    '¿Qué servicios tiene el hotel?',
+    '¿Hay estacionamiento?',
   ];
 
   void _send(String text) {

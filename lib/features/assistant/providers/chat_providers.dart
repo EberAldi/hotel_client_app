@@ -1,4 +1,4 @@
-import 'dart:math';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/chat_api.dart';
 import '../data/chat_models.dart';
@@ -10,26 +10,13 @@ final chatMessagesProvider = NotifierProvider<ChatNotifier, List<ChatMessage>>(C
 class ChatNotifier extends Notifier<List<ChatMessage>> {
   bool isTyping = false;
 
-  // Identificador estable mientras dure la sesion de la app (el huesped
-  // puede no tener cuenta): permite al assistant-service agrupar los
-  // mensajes en una sola conversacion y que el panel admin la muestre
-  // como un solo hilo en vez de mensajes sueltos.
-  late final String sessionId = _generarSessionId();
-
-  String _generarSessionId() {
-    final random = Random();
-    final sufijo = List.generate(12, (_) => random.nextInt(16).toRadixString(16)).join();
-    return 'guest-${DateTime.now().millisecondsSinceEpoch}-$sufijo';
-  }
-
   @override
   List<ChatMessage> build() => [
         ChatMessage(
           id: 'welcome',
           role: ChatRole.assistant,
-          content: '¡Hola! Soy el asistente virtual de Casa del Centro. '
-              'Puedo recomendarte qué hacer según el clima, dónde comer cerca, '
-              'o resolver dudas sobre tu estadía. ¿En qué te ayudo?',
+          content: '¡Hola! Soy Luna, el asistente virtual de Casa del Centro. '
+              'Puedo resolver dudas sobre tu estadía, horarios y los servicios del hotel. ¿En qué te ayudo?',
         ),
       ];
 
@@ -44,16 +31,18 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
     isTyping = true;
     ref.notifyListeners();
 
-    final history = state
-        .map((m) => {'role': m.role == ChatRole.user ? 'user' : 'assistant', 'content': m.content})
-        .toList();
-
-    final reply = await ref.read(chatApiProvider).sendMessage(text, history, sessionId: sessionId);
+    String respuesta;
+    try {
+      respuesta = await ref.read(chatApiProvider).sendMessage(text);
+    } on DioException catch (e) {
+      final detalle = e.response?.data is Map ? e.response?.data['detail'] : null;
+      respuesta = detalle?.toString() ?? 'No pude responder en este momento. Intenta de nuevo en un rato.';
+    }
 
     isTyping = false;
     state = [
       ...state,
-      ChatMessage(id: '${DateTime.now().toIso8601String()}_r', role: ChatRole.assistant, content: reply),
+      ChatMessage(id: '${DateTime.now().toIso8601String()}_r', role: ChatRole.assistant, content: respuesta),
     ];
   }
 }

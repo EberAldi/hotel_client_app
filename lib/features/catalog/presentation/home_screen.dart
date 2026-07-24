@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hotel_client_app/features/assistant/presentation/chat_screen.dart';
 import 'package:hotel_client_app/features/assistant/presentation/weather_recomendation.dart';
+import '../../../core/auth/auth_gate.dart';
 import '../../../core/config/app_theme.dart';
 import '../../reviews/providers/review_providers.dart';
 import '../data/catalog_models.dart';
@@ -22,9 +23,15 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
-  onPressed: () => Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const ChatScreen()),
-  ),
+  onPressed: () async {
+    final canProceed = await requireAuth(
+      context, ref,
+      actionLabel: 'Necesitas iniciar sesión para hablar con el asistente.',
+    );
+    if (canProceed && context.mounted) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
+    }
+  },
   backgroundColor: AppColors.terracotta,
   icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white),
   label: const Text('Asistente', style: TextStyle(color: Colors.white)),
