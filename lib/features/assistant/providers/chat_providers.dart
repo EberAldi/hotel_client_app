@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/chat_api.dart';
 import '../data/chat_models.dart';
@@ -8,6 +9,18 @@ final chatMessagesProvider = NotifierProvider<ChatNotifier, List<ChatMessage>>(C
 
 class ChatNotifier extends Notifier<List<ChatMessage>> {
   bool isTyping = false;
+
+  // Identificador estable mientras dure la sesion de la app (el huesped
+  // puede no tener cuenta): permite al assistant-service agrupar los
+  // mensajes en una sola conversacion y que el panel admin la muestre
+  // como un solo hilo en vez de mensajes sueltos.
+  late final String sessionId = _generarSessionId();
+
+  String _generarSessionId() {
+    final random = Random();
+    final sufijo = List.generate(12, (_) => random.nextInt(16).toRadixString(16)).join();
+    return 'guest-${DateTime.now().millisecondsSinceEpoch}-$sufijo';
+  }
 
   @override
   List<ChatMessage> build() => [
@@ -35,7 +48,7 @@ class ChatNotifier extends Notifier<List<ChatMessage>> {
         .map((m) => {'role': m.role == ChatRole.user ? 'user' : 'assistant', 'content': m.content})
         .toList();
 
-    final reply = await ref.read(chatApiProvider).sendMessage(text, history);
+    final reply = await ref.read(chatApiProvider).sendMessage(text, history, sessionId: sessionId);
 
     isTyping = false;
     state = [

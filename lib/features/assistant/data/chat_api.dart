@@ -1,21 +1,23 @@
-import 'package:dio/dio.dart';
+import '../../../core/auth/dio_client.dart';
+import '../../../core/config/api_config.dart';
 
 class ChatApi {
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'http://localhost:3006/api',
-    connectTimeout: const Duration(seconds: 4),
-  ));
+  final DioClient _client = DioClient(ApiConfig.assistantBaseUrl);
 
-  Future<String> sendMessage(String message, List<Map<String, String>> history) async {
+  Future<String> sendMessage(
+    String message,
+    List<Map<String, String>> history, {
+    required String sessionId,
+  }) async {
     try {
-      final response = await _dio.post('/chat/', data: {
+      final response = await _client.dio.post('/chat/', data: {
         'message': message,
         'history': history,
+        'session_id': sessionId,
       });
       return response.data['reply'] as String;
     } catch (_) {
-      // El microservicio 'assistant' aún no existe — respuesta simulada
-      // para poder seguir construyendo la UI sin bloquear el trabajo.
+      // Respuesta simulada si el microservicio no responde (offline/caido).
       return _mockReply(message);
     }
   }

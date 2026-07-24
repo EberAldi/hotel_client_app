@@ -5,4 +5,5 @@ class ApiConfig {
   static const String reservationBaseUrl = 'http://localhost:3003/api';
   static const String paymentBaseUrl = 'http://localhost:3004/api';
   static const String reviewBaseUrl = 'http://localhost:3005/api';
+  static const String assistantBaseUrl = 'http://localhost:3006/api';
 }
