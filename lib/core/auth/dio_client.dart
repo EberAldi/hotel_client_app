@@ -16,8 +16,14 @@ class DioClient {
           return handler.next(options);
         },
         onError: (error, handler) async {
-          if (error.response?.statusCode == 401) {
-            // aquí luego enganchamos el refresh token flow
+          final status = error.response?.statusCode;
+          if (status == 401 || status == 403) {
+            // El access token dura solo 2 minutos, así que expira todo el
+            // tiempo. En vez de seguir reenviándolo roto en cada request
+            // (lo que puede tumbar hasta el login), lo borramos aquí; la
+            // próxima acción que requiera sesión vuelve a pedir login.
+            await _storage.delete(key: 'access_token');
+            await _storage.delete(key: 'refresh_token');
           }
           return handler.next(error);
         },
