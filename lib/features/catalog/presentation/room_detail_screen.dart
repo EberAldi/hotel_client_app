@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/auth/auth_gate.dart';
 import '../../../core/config/app_theme.dart';
+import '../../reservations/data/payment_api.dart';
 import '../../reservations/data/reservation_api.dart';
 import '../../reviews/data/review_models.dart';
 import '../../reviews/providers/review_providers.dart';
@@ -78,6 +79,10 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
     required double precioTotal,
   }) async {
     bool enviando = false;
+    String metodo = 'efectivo';
+    final numeroTarjetaController = TextEditingController();
+    final vencimientoController = TextEditingController();
+    final cvvController = TextEditingController();
 
     await showModalBottomSheet(
       context: context,
@@ -85,8 +90,11 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: const EdgeInsets.all(28),
+        builder: (ctx, setSheetState) => SingleChildScrollView(
+          padding: EdgeInsets.only(
+            left: 28, right: 28, top: 28,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 28,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -99,37 +107,125 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
               _resumenFila('Noches', '$noches'),
               const Divider(height: 28),
               _resumenFila('Total', '\$${precioTotal.toStringAsFixed(0)} MXN', destacado: true),
-              const SizedBox(height: 8),
-              Text(
-                'Tu reservación quedará pendiente de pago. El cobro se confirma después.',
-                style: Theme.of(ctx).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
+              const SizedBox(height: 20),
+              Text('Método de pago', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontSize: 15)),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _MetodoPagoOpcion(
+                      label: 'Efectivo',
+                      icon: Icons.payments_outlined,
+                      selected: metodo == 'efectivo',
+                      onTap: () => setSheetState(() => metodo = 'efectivo'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _MetodoPagoOpcion(
+                      label: 'Tarjeta',
+                      icon: Icons.credit_card_rounded,
+                      selected: metodo == 'tarjeta',
+                      onTap: () => setSheetState(() => metodo = 'tarjeta'),
+                    ),
+                  ),
+                ],
               ),
+              if (metodo == 'tarjeta') ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: numeroTarjetaController,
+                  decoration: const InputDecoration(hintText: 'Número de tarjeta', prefixIcon: Icon(Icons.credit_card_rounded)),
+                  keyboardType: TextInputType.number,
+                  maxLength: 16,
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: vencimientoController,
+                        decoration: const InputDecoration(hintText: 'MM/AA'),
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: cvvController,
+                        decoration: const InputDecoration(hintText: 'CVV'),
+                        keyboardType: TextInputType.number,
+                        obscureText: true,
+                        maxLength: 3,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Pago simulado: no se realiza ningún cargo real.',
+                  style: Theme.of(ctx).textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ] else ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Tu reservación quedará pendiente de pago. Pagas al llegar al hotel.',
+                  style: Theme.of(ctx).textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ],
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: enviando
                     ? null
                     : () async {
+                        if (metodo == 'tarjeta' &&
+                            !_tarjetaSimuladaValida(
+                              numeroTarjetaController.text,
+                              vencimientoController.text,
+                              cvvController.text,
+                            )) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('Revisa los datos de la tarjeta.')),
+                          );
+                          return;
+                        }
+
                         setSheetState(() => enviando = true);
                         try {
-                          await ref.read(reservationApiProvider).crearReservacion(
+                          final reservacion = await ref.read(reservationApiProvider).crearReservacion(
                                 habitacionId: room.id,
                                 fechaEntrada: entrada,
                                 fechaSalida: salida,
                                 precioTotal: precioTotal,
                               );
+                          final pago = await ref.read(paymentApiProvider).crearPago(
+                                reservacionId: reservacion['id'] as String,
+                                monto: precioTotal,
+                                metodo: metodo,
+                              );
+
+                          String mensajeExito;
+                          if (metodo == 'tarjeta') {
+                            final confirmacion = await ref.read(paymentApiProvider).confirmarPago(
+                                  pago['id'] as String,
+                                  idTransaccion: 'SIM-${DateTime.now().millisecondsSinceEpoch}',
+                                );
+                            mensajeExito = '¡Pago aprobado! Factura ${confirmacion['numero_factura']}.';
+                          } else {
+                            mensajeExito =
+                                'Reservación creada. Paga \$${precioTotal.toStringAsFixed(0)} en efectivo al llegar.';
+                          }
+
                           if (ctx.mounted) Navigator.pop(ctx);
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('¡Listo! Tu reservación quedó pendiente de pago.')),
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensajeExito)));
                           }
                         } on DioException catch (e) {
                           setSheetState(() => enviando = false);
                           final detalle = e.response?.data is Map ? e.response?.data['detail'] : null;
                           if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
-                              SnackBar(content: Text(detalle?.toString() ?? 'No pudimos crear la reservación.')),
+                              SnackBar(content: Text(detalle?.toString() ?? 'No pudimos procesar tu reservación.')),
                             );
                           }
                         }
@@ -139,13 +235,19 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
                         height: 20, width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text('Confirmar reservación'),
+                    : Text(metodo == 'tarjeta' ? 'Pagar con tarjeta' : 'Reservar y pagar en efectivo'),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  bool _tarjetaSimuladaValida(String numero, String vencimiento, String cvv) {
+    final numeroLimpio = numero.replaceAll(RegExp(r'\s'), '');
+    final vencimientoValido = RegExp(r'^\d{2}/\d{2}$').hasMatch(vencimiento);
+    return numeroLimpio.length >= 13 && numeroLimpio.length <= 19 && vencimientoValido && cvv.length >= 3;
   }
 
   Widget _resumenFila(String label, String valor, {bool destacado = false}) {
@@ -164,6 +266,44 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MetodoPagoOpcion extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MetodoPagoOpcion({required this.label, required this.icon, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.terracotta.withOpacity(0.12) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? AppColors.terracotta : AppColors.ink.withOpacity(0.15), width: 1.5),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: selected ? AppColors.terracotta : AppColors.ink.withOpacity(0.6)),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: selected ? AppColors.terracotta : AppColors.ink,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
